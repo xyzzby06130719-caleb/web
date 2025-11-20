@@ -8,7 +8,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # 关键：我们在这里指定依赖的上游仓库，保证 Fork 用户也能正确拉取
   UPSTREAM_REPO: "butteryiyi/web" 
 
 jobs:
@@ -17,7 +16,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      actions: read 
+      actions: write  # <<-- 关键修复：从 'read' 改为 'write'，以允许写入构建缓存
 
     steps:
       - name: Checkout repository
@@ -26,13 +25,9 @@ jobs:
       - name: Get Camoufox URL from Upstream Repo
         id: get_url
         env:
-          # 将 GitHub Token 传递给 gh 命令，用于 API认证
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "正在从上游仓库 [${{ env.UPSTREAM_REPO }}] 的 latest release 中获取依赖..."
-          
-          # 使用官方的 GitHub CLI，比 curl+grep+cut 更稳定可靠
-          # 它会精确查找名为 camoufox-linux.tar.gz 的文件并返回其下载 URL
           URL=$(gh release view --repo ${{ env.UPSTREAM_REPO }} --json assets --jq '.assets[] | select(.name == "camoufox-linux.tar.gz") | .url')
           
           if [[ -z "$URL" ]]; then
@@ -41,7 +36,6 @@ jobs:
           fi
           
           echo "成功获取依赖 URL: $URL"
-          # 使用 GITHUB_OUTPUT 将 URL 传递给后续步骤
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       - name: Log in to the Container registry
@@ -67,5 +61,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             CAMOUFOX_URL=${{ steps.get_url.outputs.url }}
+          # 缓存设置本身是正确的，现在有了权限，它们就能正常工作了
           cache-from: type=gha
           cache-to: type=gha,mode=max
